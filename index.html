@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Ausländerkarte — Foreign-national share across Germany</title>
+    <meta
+      name="description"
+      content="Interactive drill-down map of the share of foreign nationals across Germany's states and districts (Destatis Regionalatlas, 2023)."
+    />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <!-- Title / search card (top-left, TrueSize-style floating panel) -->
+    <section id="control" class="card" aria-label="Map controls">
+      <header class="control__head">
+        <h1>Ausländerkarte</h1>
+        <p class="control__sub">Share of foreign nationals · Germany · 2023</p>
+      </header>
+
+      <form id="search-form" autocomplete="off" role="search">
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="search__icon">
+            <path
+              d="M10 4a6 6 0 104.472 10.03l4.249 4.248 1.414-1.414-4.248-4.249A6 6 0 0010 4zm0 2a4 4 0 110 8 4 4 0 010-8z"
+            />
+          </svg>
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Search a state or district…"
+            aria-label="Search a state or district"
+          />
+        </div>
+        <ul id="search-results" class="search__results" hidden></ul>
+      </form>
+
+      <nav id="breadcrumb" class="breadcrumb" aria-label="Location">
+        <button type="button" class="crumb crumb--root" data-action="home">Germany</button>
+      </nav>
+    </section>
+
+    <!-- Detail panel (right) -->
+    <aside id="detail" class="card detail" hidden aria-live="polite">
+      <button type="button" class="detail__close" data-action="close-detail" aria-label="Close">×</button>
+      <p class="detail__kicker" id="detail-kicker">District</p>
+      <h2 class="detail__name" id="detail-name">—</h2>
+      <div class="detail__figure">
+        <span class="detail__value" id="detail-value">—</span>
+        <span class="detail__unit">% foreign nationals</span>
+      </div>
+      <dl class="detail__meta">
+        <div><dt>Region</dt><dd id="detail-parent">—</dd></div>
+        <div><dt>Rank in Germany</dt><dd id="detail-rank">—</dd></div>
+        <div><dt>vs. national avg.</dt><dd id="detail-vs">—</dd></div>
+      </dl>
+      <p class="detail__note" id="detail-note"></p>
+    </aside>
+
+    <!-- Legend (bottom-left) -->
+    <section id="legend" class="card legend" aria-label="Legend">
+      <div class="legend__title">Foreign nationals (% of population)</div>
+      <div class="legend__bar" id="legend-bar"></div>
+      <div class="legend__scale">
+        <span id="legend-low">0%</span>
+        <span id="legend-high">30%+</span>
+      </div>
+      <div class="legend__hint" id="legend-hint">Click a state to see its districts</div>
+    </section>
+
+    <!-- Attribution (bottom-right) -->
+    <footer id="attribution" class="attribution"></footer>
+
+    <!-- Hover tooltip -->
+    <div id="tooltip" class="tooltip" hidden></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

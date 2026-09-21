@@ -1,0 +1,24 @@
+{
+  "name": "auslaenderkarte",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive drill-down map of the foreign-national share across Germany's states and districts.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "fetch-data": "bash scripts/fetch-data.sh",
+    "build-data": "node scripts/build-data.mjs"
+  },
+  "dependencies": {
+    "d3-scale": "^4.0.2",
+    "d3-scale-chromatic": "^3.1.0",
+    "fuse.js": "^7.0.0",
+    "maplibre-gl": "^4.7.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}
