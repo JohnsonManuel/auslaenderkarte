@@ -10,18 +10,40 @@ import './style.css';
 // ---------------------------------------------------------------------------
 const overlay = showOverlay('Loading map data…');
 
-let states, kreise, meta, statesLabels, kreiseLabels;
+let states, kreise, meta, statesLabels, kreiseLabels, timeseries;
 try {
-  [states, kreise, meta, statesLabels, kreiseLabels] = await Promise.all([
+  [states, kreise, meta, statesLabels, kreiseLabels, timeseries] = await Promise.all([
     fetch('data/states.geojson').then(okJson),
     fetch('data/kreise.geojson').then(okJson),
     fetch('data/meta.json').then(okJson),
     fetch('data/states_labels.geojson').then(okJson),
     fetch('data/kreise_labels.geojson').then(okJson),
+    fetch('data/timeseries.json').then(okJson),
   ]);
 } catch (err) {
   showOverlay(`Could not load data files.\n${err.message}`, true);
   throw err;
+}
+
+// ---------------------------------------------------------------------------
+// Time slider state
+// ---------------------------------------------------------------------------
+const YEARS = timeseries.years; // e.g. [2011, 2012, ..., 2024]
+let yearIndex = YEARS.length - 1; // defaults to the latest year
+
+// Hamburg/Berlin are city-states whose district-level entity shares the same
+// 2-digit AGS as the state itself, so state and district series are kept in
+// separate namespaces (see build-data.mjs) instead of one flat map.
+const seriesFor = (ags, level) => (level === 'state' ? timeseries.states : timeseries.districts)[ags];
+const shareAt = (ags, level, idx = yearIndex) => {
+  const series = seriesFor(ags, level);
+  const v = series ? series[idx] : null;
+  return v == null ? null : v;
+};
+function countsFor(pop, share) {
+  if (pop == null || share == null) return { foreign: null, german: null };
+  const foreign = Math.round((pop * share) / 100);
+  return { foreign, german: pop - foreign };
 }
 
 // ---------------------------------------------------------------------------
@@ -31,16 +53,24 @@ const NO_DATA = '#2b3450';
 const color = scaleSequential(interpolateYlOrRd).domain([meta.domainLow, meta.domainHigh]);
 const colorFor = (share) => (share == null || !Number.isFinite(share) ? NO_DATA : color(share));
 
-// paint colour onto every feature so the fill layer can just read ['get','color']
+// paint a default colour (latest year) onto every feature so the fill layer
+// has a sane value even before the first applyYear() feature-state pass.
 for (const f of states.features) f.properties.color = colorFor(f.properties.share);
 for (const f of kreise.features) f.properties.color = colorFor(f.properties.share);
 
-// national rankings (by share, descending; 1 = highest)
-const stateRank = rankByShare(states.features);
-const districtRank = rankByShare(kreise.features);
-const stateShareByAgs = Object.fromEntries(
-  states.features.map((f) => [f.properties.ags, f.properties.share]),
-);
+// national rankings + per-state share, recomputed for the selected year.
+let stateRank = {};
+let districtRank = {};
+let stateShareByAgs = {};
+
+function recomputeYearDerived() {
+  stateRank = rankByShare(states.features);
+  districtRank = rankByShare(kreise.features);
+  stateShareByAgs = Object.fromEntries(
+    states.features.map((f) => [f.properties.ags, shareAt(f.properties.ags, 'state')]),
+  );
+}
+recomputeYearDerived();
 
 // bounding boxes for fly-to
 const germanyBounds = featureCollectionBounds(states);
@@ -82,7 +112,11 @@ map.on('load', () => {
     id: 'states-fill',
     type: 'fill',
     source: 'states',
-    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': FILL_OPACITY },
+    paint: {
+      'fill-color': ['coalesce', ['feature-state', 'color'], ['get', 'color']],
+      'fill-color-transition': { duration: 300 },
+      'fill-opacity': FILL_OPACITY,
+    },
   });
   map.addLayer({
     id: 'states-line',
@@ -96,7 +130,11 @@ map.on('load', () => {
     type: 'fill',
     source: 'kreise',
     filter: ['==', ['get', 'state_ags'], '__none__'],
-    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': FILL_OPACITY },
+    paint: {
+      'fill-color': ['coalesce', ['feature-state', 'color'], ['get', 'color']],
+      'fill-color-transition': { duration: 300 },
+      'fill-opacity': FILL_OPACITY,
+    },
   });
   map.addLayer({
     id: 'kreise-line',
@@ -164,6 +202,9 @@ map.on('load', () => {
   // Ensure correct framing once the container has its final size.
   map.resize();
   map.fitBounds(germanyBounds, { padding: 60, duration: 0 });
+
+  mapLoaded = true;
+  applyYear(yearIndex);
 });
 
 // ---------------------------------------------------------------------------
@@ -207,6 +248,90 @@ function drillToState(ags, { fly = true } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Time slider
+// ---------------------------------------------------------------------------
+let mapLoaded = false;
+let openDetail = null; // { level: 'state' | 'district', ags } | null
+
+function applyYear(idx) {
+  yearIndex = idx;
+  recomputeYearDerived();
+
+  if (mapLoaded) {
+    for (const f of states.features) {
+      const ags = f.properties.ags;
+      map.setFeatureState({ source: 'states', id: ags }, { color: colorFor(shareAt(ags, 'state')) });
+    }
+    for (const f of kreise.features) {
+      const ags = f.properties.ags;
+      map.setFeatureState({ source: 'kreise', id: ags }, { color: colorFor(shareAt(ags, 'district')) });
+    }
+  }
+
+  renderYearLabel();
+
+  // Keep an open detail panel in sync with the newly selected year.
+  if (openDetail) {
+    const fc = openDetail.level === 'state' ? states : kreise;
+    const f = fc.features.find((x) => x.properties.ags === openDetail.ags);
+    if (f) (openDetail.level === 'state' ? showStateDetail : showDistrictDetail)(f.properties);
+  }
+}
+
+const yearSlider = document.getElementById('year-slider');
+const yearLabel = document.getElementById('year-label');
+const yearPrev = document.getElementById('year-prev');
+const yearNext = document.getElementById('year-next');
+const yearPlay = document.getElementById('year-play');
+let playTimer = null;
+
+function renderYearLabel() {
+  yearLabel.textContent = YEARS[yearIndex];
+  yearSlider.value = String(yearIndex);
+  yearPrev.disabled = yearIndex === 0;
+  yearNext.disabled = yearIndex === YEARS.length - 1;
+}
+
+yearSlider.min = '0';
+yearSlider.max = String(YEARS.length - 1);
+yearSlider.step = '1';
+yearSlider.value = String(yearIndex);
+
+yearSlider.addEventListener('input', () => {
+  stopPlay();
+  applyYear(Number(yearSlider.value));
+});
+yearPrev.addEventListener('click', () => {
+  stopPlay();
+  if (yearIndex > 0) applyYear(yearIndex - 1);
+});
+yearNext.addEventListener('click', () => {
+  stopPlay();
+  if (yearIndex < YEARS.length - 1) applyYear(yearIndex + 1);
+});
+const yearPlayIcon = document.getElementById('year-play-icon');
+const PLAY_D = 'M8 5.5v13l11-6.5z';
+const PAUSE_D = 'M7 5h4v14H7zM13 5h4v14h-4z';
+
+yearPlay.addEventListener('click', () => {
+  if (playTimer) return stopPlay();
+  if (yearIndex >= YEARS.length - 1) applyYear(0);
+  yearPlayIcon.setAttribute('d', PAUSE_D);
+  yearPlay.setAttribute('aria-label', 'Pause');
+  playTimer = setInterval(() => {
+    if (yearIndex >= YEARS.length - 1) return stopPlay();
+    applyYear(yearIndex + 1);
+  }, 700);
+});
+function stopPlay() {
+  if (!playTimer) return;
+  clearInterval(playTimer);
+  playTimer = null;
+  yearPlayIcon.setAttribute('d', PLAY_D);
+  yearPlay.setAttribute('aria-label', 'Play');
+}
+
+// ---------------------------------------------------------------------------
 // Interactions
 // ---------------------------------------------------------------------------
 let hovered = null; // { source, id }
@@ -243,16 +368,17 @@ function showTooltip(evt, props) {
     props.level === 'district'
       ? `${props.kind || 'District'} · ${props.state_name}`
       : 'Federal state';
-  const foreignPct = props.share;
-  const germanPct = props.share == null ? null : Math.round((100 - props.share) * 10) / 10;
+  const foreignPct = shareAt(props.ags, props.level);
+  const germanPct = foreignPct == null ? null : Math.round((100 - foreignPct) * 10) / 10;
+  const { foreign, german } = countsFor(props.pop, foreignPct);
   tooltip.innerHTML =
     `<div class="tooltip__name">${escapeHtml(props.name)}</div>` +
     `<div class="tooltip__sub">${escapeHtml(sub)}</div>` +
     `<div class="tt-row"><span class="tt-k">Germans</span>` +
-    `<span class="tt-v">${fmtInt(props.german)} <em>${fmtPct(germanPct)}</em></span></div>` +
+    `<span class="tt-v">${fmtInt(german)} <em>${fmtPct(germanPct)}</em></span></div>` +
     `<div class="tt-row tt-row--accent"><span class="tt-k">Non-Germans</span>` +
-    `<span class="tt-v">${fmtInt(props.foreign)} <em>${fmtPct(foreignPct)}</em></span></div>` +
-    `<div class="tt-total">Population ${fmtInt(props.pop)}</div>`;
+    `<span class="tt-v">${fmtInt(foreign)} <em>${fmtPct(foreignPct)}</em></span></div>` +
+    `<div class="tt-total">Population ${fmtInt(props.pop)} · ${YEARS[yearIndex]}</div>`;
   tooltip.style.left = `${evt.clientX}px`;
   tooltip.style.top = `${evt.clientY}px`;
   tooltip.hidden = false;
@@ -267,40 +393,48 @@ function hideTooltip() {
 const detail = document.getElementById('detail');
 
 function showDistrictDetail(p) {
+  openDetail = { level: 'district', ags: p.ags };
+  const share = shareAt(p.ags, 'district');
+  const { foreign, german } = countsFor(p.pop, share);
+  const germanPct = share == null ? null : Math.round((100 - share) * 10) / 10;
   const rank = districtRank[p.ags];
   const stateShare = stateShareByAgs[p.state_ags];
-  const delta = p.share != null && stateShare != null ? p.share - stateShare : null;
+  const delta = share != null && stateShare != null ? share - stateShare : null;
   fillDetail({
     kicker: p.kind || 'District',
     name: p.name,
-    share: p.share,
+    share,
     rows: [
-      ['Germans', `${fmtInt(p.german)} · ${fmtPct(100 - p.share)}`],
-      ['Non-Germans', `${fmtInt(p.foreign)} · ${fmtPct(p.share)}`],
+      ['Germans', `${fmtInt(german)} · ${fmtPct(germanPct)}`],
+      ['Non-Germans', `${fmtInt(foreign)} · ${fmtPct(share)}`],
       ['Population', fmtInt(p.pop)],
       ['State', p.state_name || '—'],
       ['Rank in Germany', rank ? `#${rank} of ${meta.districtCount}` : '—'],
       [`vs. ${p.state_name} avg.`, delta == null ? '—' : `${fmtDelta(delta)} pts`],
     ],
-    note: `Population: ${meta.popSource}. Counts are derived from the ${meta.year} foreign-share indicator, so they are approximate. Neighbourhood-level breakdown within a city is not part of the federal dataset.`,
+    note: `Population: ${meta.popSource}. Counts are derived from the ${YEARS[yearIndex]} foreign-share indicator, so they are approximate. Neighbourhood-level breakdown within a city is not part of the federal dataset.`,
   });
 }
 
 function showStateDetail(p) {
+  openDetail = { level: 'state', ags: p.ags };
+  const share = shareAt(p.ags, 'state');
+  const { foreign, german } = countsFor(p.pop, share);
+  const germanPct = share == null ? null : Math.round((100 - share) * 10) / 10;
   const rank = stateRank[p.ags];
   const districtsInState = kreise.features.filter((f) => f.properties.state_ags === p.ags).length;
   fillDetail({
     kicker: 'Federal state',
     name: p.name,
-    share: p.share,
+    share,
     rows: [
-      ['Germans', `${fmtInt(p.german)} · ${fmtPct(100 - p.share)}`],
-      ['Non-Germans', `${fmtInt(p.foreign)} · ${fmtPct(p.share)}`],
+      ['Germans', `${fmtInt(german)} · ${fmtPct(germanPct)}`],
+      ['Non-Germans', `${fmtInt(foreign)} · ${fmtPct(share)}`],
       ['Population', fmtInt(p.pop)],
       ['Rank of states', rank ? `#${rank} of ${meta.stateCount}` : '—'],
       ['Districts', String(districtsInState)],
     ],
-    note: `Population: ${meta.popSource}. Counts are derived from the ${meta.year} foreign-share indicator, so they are approximate. Click the state on the map to drill into its districts.`,
+    note: `Population: ${meta.popSource}. Counts are derived from the ${YEARS[yearIndex]} foreign-share indicator, so they are approximate. Click the state on the map to drill into its districts.`,
   });
 }
 
@@ -317,6 +451,7 @@ function fillDetail({ kicker, name, share, rows, note }) {
 }
 function closeDetail() {
   detail.hidden = true;
+  openDetail = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,9 +459,18 @@ function closeDetail() {
 // ---------------------------------------------------------------------------
 const breadcrumb = document.getElementById('breadcrumb');
 
+const BACK_ICON =
+  '<svg class="crumb__back" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" ' +
+  'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function renderBreadcrumb() {
-  const parts = [`<button type="button" class="crumb" data-action="home">Germany</button>`];
-  if (level === 'state' && currentStateAgs) {
+  const isState = level === 'state' && currentStateAgs;
+  const homeIcon = isState ? BACK_ICON : '';
+  const homeTitle = isState ? ' title="Back to Germany (Esc)"' : '';
+  const parts = [
+    `<button type="button" class="crumb crumb--root" data-action="home"${homeTitle}>${homeIcon}Germany</button>`,
+  ];
+  if (isState) {
     const name = stateNameByAgs(currentStateAgs);
     parts.push('<span class="crumb__sep">›</span>');
     parts.push(`<span class="crumb crumb--current">${escapeHtml(name)}</span>`);
@@ -416,6 +560,16 @@ document.addEventListener('click', (e) => {
   if (!searchForm.contains(e.target)) hideResults();
 });
 
+// One Escape key backs out one layer at a time: search suggestions, then
+// the detail panel, then drill level - so there is always an obvious way
+// back, even after opening a large state with many small districts.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!searchResults.hidden) return hideResults();
+  if (!detail.hidden) return closeDetail();
+  if (level === 'state') return goNational();
+});
+
 function renderResults() {
   activeIndex = -1;
   if (!activeResults.length) {
@@ -490,9 +644,8 @@ function setVisible(layerId, visible) {
 }
 
 function rankByShare(features) {
-  const sorted = features
-    .filter((f) => f.properties.share != null)
-    .sort((a, b) => b.properties.share - a.properties.share);
+  const at = (f) => shareAt(f.properties.ags, f.properties.level);
+  const sorted = features.filter((f) => at(f) != null).sort((a, b) => at(b) - at(a));
   const rank = {};
   sorted.forEach((f, i) => (rank[f.properties.ags] = i + 1));
   return rank;

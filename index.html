@@ -6,7 +6,7 @@
     <title>Ausländerkarte — Foreign-national share across Germany</title>
     <meta
       name="description"
-      content="Interactive drill-down map of the share of foreign nationals across Germany's states and districts (Destatis Regionalatlas, 2023)."
+      content="Interactive drill-down map of the share of foreign nationals across Germany's states and districts, 2011-2024 (Destatis Regionalatlas)."
     />
   </head>
   <body>
@@ -16,7 +16,7 @@
     <section id="control" class="card" aria-label="Map controls">
       <header class="control__head">
         <h1>Ausländerkarte</h1>
-        <p class="control__sub">Share of foreign nationals · Germany · 2023</p>
+        <p class="control__sub">Share of foreign nationals · Germany · 2011-2024</p>
       </header>
 
       <form id="search-form" autocomplete="off" role="search">
@@ -50,11 +50,7 @@
         <span class="detail__value" id="detail-value">—</span>
         <span class="detail__unit">% foreign nationals</span>
       </div>
-      <dl class="detail__meta">
-        <div><dt>Region</dt><dd id="detail-parent">—</dd></div>
-        <div><dt>Rank in Germany</dt><dd id="detail-rank">—</dd></div>
-        <div><dt>vs. national avg.</dt><dd id="detail-vs">—</dd></div>
-      </dl>
+      <dl class="detail__meta"></dl>
       <p class="detail__note" id="detail-note"></p>
     </aside>
 
@@ -67,6 +63,25 @@
         <span id="legend-high">30%+</span>
       </div>
       <div class="legend__hint" id="legend-hint">Click a state to see its districts</div>
+    </section>
+
+    <!-- Time slider (bottom-centre) -->
+    <section id="timeline" class="card timeline" aria-label="Year">
+      <button type="button" id="year-play" class="timeline__play" aria-label="Play">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path id="year-play-icon" d="M8 5.5v13l11-6.5z" /></svg>
+      </button>
+      <button type="button" id="year-prev" class="timeline__step" aria-label="Previous year">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <input type="range" id="year-slider" class="timeline__slider" aria-label="Select year" />
+      <button type="button" id="year-next" class="timeline__step" aria-label="Next year">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <span id="year-label" class="timeline__year">—</span>
     </section>
 
     <!-- Attribution (bottom-right) -->

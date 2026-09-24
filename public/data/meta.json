@@ -1,12 +1,12 @@
 {
-  "year": 2023,
-  "source": "Statistische Ämter des Bundes und der Länder — Regionalatlas Deutschland (Indikator AI0208: Ausländeranteil), Stand 31.12.2023",
+  "year": 2024,
+  "source": "Statistische Ämter des Bundes und der Länder — Regionalatlas Deutschland (Indikator AI0208: Ausländeranteil), Stand 31.12.2024",
   "popSource": "Statistisches Bundesamt — Gemeindeverzeichnis (Bevölkerung auf Grundlage des Zensus 2022)",
   "metric": "Ausländeranteil (share of foreign nationals, %)",
-  "domainLow": 4,
-  "domainHigh": 28,
+  "domainLow": 1,
+  "domainHigh": 24,
   "districtMin": 3.8,
-  "districtMax": 39.3,
+  "districtMax": 39.8,
   "stateCount": 16,
   "districtCount": 400
 }

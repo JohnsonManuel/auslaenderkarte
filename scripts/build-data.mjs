@@ -3,10 +3,13 @@
 // Reads the raw GeoJSON pulled from the Destatis "Regionalatlas" service
 // (states = typ 1, districts = typ 3), each already carrying the real
 // indicator AI0208 = "Anteil der ausländischen Bevölkerung an der
-// Gesamtbevölkerung" (share of foreign nationals, %), reference year 2023.
+// Gesamtbevölkerung" (share of foreign nationals, %), current reference
+// year DATA_YEAR, plus attribute-only history back to 2011 for the time
+// slider (see data/raw/by-year/).
 //
 // It cleans names, derives the parent-state key for drill-down, computes a
-// stable colour domain, and writes app-ready files into ./public/data.
+// stable colour domain, builds the 2011-DATA_YEAR time series, and writes
+// app-ready files into ./public/data.
 //
 // Re-run yearly (after bumping DATA_YEAR in scripts/fetch-data.sh) with:
 //   node scripts/build-data.mjs
@@ -21,10 +24,10 @@ const root = resolve(__dirname, '..');
 const rawDir = resolve(root, 'data', 'raw');
 const outDir = resolve(root, 'public', 'data');
 
-const DATA_YEAR = 2023;
+const DATA_YEAR = 2024;
 const SOURCE =
   'Statistische Ämter des Bundes und der Länder — Regionalatlas Deutschland ' +
-  '(Indikator AI0208: Ausländeranteil), Stand 31.12.2023';
+  '(Indikator AI0208: Ausländeranteil), Stand 31.12.2024';
 const POP_SOURCE =
   'Statistisches Bundesamt — Gemeindeverzeichnis (Bevölkerung auf Grundlage des Zensus 2022)';
 
@@ -125,15 +128,84 @@ for (const f of states.features) {
   Object.assign(p, counts(statePop[p.ags] || null, p.share));
 }
 
-// ---- colour domain (robust to outliers) -------------------------------------
+// ---- time series (2011-DATA_YEAR) --------------------------------------------
+// Attribute-only history for the time slider. 2011 is the earliest year
+// district AGS codes line up with today's 400 districts (several
+// Kreisgebietsreformen renumbered/merged districts before then). Two
+// mergers remain inside 2011-DATA_YEAR:
+//   03159 (Göttingen)    = old 03152 (Göttingen) + 03156 (Osterode), 2016
+//   16063 (Wartburgkreis) absorbed 16056 (Eisenach), 2021
+// These need no special-case code: before its merger year, a merged AGS
+// simply isn't a key in that year's raw data, so it naturally comes out
+// null below (rendered as the existing no-data grey) instead of a faked
+// pre-merger value.
+const HIST_YEARS = [2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023];
+const byYearDir = resolve(rawDir, 'by-year');
+
+function shareMapForYear(typ, year) {
+  const raw = readJSON(resolve(byYearDir, `${typ}_${year}.json`));
+  const map = {};
+  for (const f of raw.features) {
+    const ags = clean(f.properties.ags);
+    const share = f.properties.ai0208 == null ? null : Number(f.properties.ai0208);
+    if (share != null) map[ags] = share;
+  }
+  return map;
+}
+
+const years = [...HIST_YEARS, DATA_YEAR];
+const shareMapsByYear = {};
+for (const year of HIST_YEARS) {
+  shareMapsByYear[year] = {
+    states: shareMapForYear('states', year),
+    kreise: shareMapForYear('kreise', year),
+  };
+}
+// DATA_YEAR is already parsed above (rawStates/rawKreise) - reuse it instead
+// of re-reading a duplicate file.
+shareMapsByYear[DATA_YEAR] = {
+  states: Object.fromEntries(states.features.map((f) => [f.properties.ags, f.properties.share])),
+  kreise: Object.fromEntries(kreise.features.map((f) => [f.properties.ags, f.properties.share])),
+};
+
+function buildSeries(features, kind) {
+  const byAgs = {};
+  for (const f of features) {
+    const ags = f.properties.ags;
+    byAgs[ags] = years.map((year) => shareMapsByYear[year][kind][ags] ?? null);
+  }
+  return byAgs;
+}
+// Hamburg and Berlin are city-states: their district-level entity (kreise,
+// typ=3) shares the SAME 2-digit AGS as the state itself ("02", "11"),
+// because there's no separate Kreis - the whole state is one urban unit.
+// A single flat byAgs map would let one overwrite the other, so states and
+// districts get their own namespace instead of relying on the two series
+// happening to agree (they do today, but that's incidental, not structural).
+const timeseries = {
+  years,
+  states: buildSeries(states.features, 'states'),
+  districts: buildSeries(kreise.features, 'kreise'),
+};
+
+const preMergeNulls = (ags) =>
+  timeseries.districts[ags].filter((v, i) => v == null && years[i] < DATA_YEAR).length;
+
+// ---- colour domain (robust to outliers, pooled across all years) -----------
+// A fixed domain across the whole time range keeps colour intensity
+// comparable when scrubbing the slider, instead of rescaling every frame.
+const allYearsDistrictShares = kreise.features
+  .flatMap((f) => timeseries.districts[f.properties.ags])
+  .filter((v) => v != null && Number.isFinite(v))
+  .sort((a, b) => a - b);
 const districtShares = kreise.features
   .map((f) => f.properties.share)
   .filter((v) => v != null && Number.isFinite(v))
   .sort((a, b) => a - b);
 
 const pct = (arr, p) => arr[Math.min(arr.length - 1, Math.floor((p / 100) * arr.length))];
-const domainLow = Math.max(0, Math.floor(pct(districtShares, 2)));
-const domainHigh = Math.ceil(pct(districtShares, 98));
+const domainLow = Math.max(0, Math.floor(pct(allYearsDistrictShares, 2)));
+const domainHigh = Math.ceil(pct(allYearsDistrictShares, 98));
 
 const meta = {
   year: DATA_YEAR,
@@ -193,6 +265,7 @@ writeFileSync(resolve(outDir, 'kreise.geojson'), JSON.stringify(kreise));
 writeFileSync(resolve(outDir, 'states_labels.geojson'), JSON.stringify(statesLabels));
 writeFileSync(resolve(outDir, 'kreise_labels.geojson'), JSON.stringify(kreiseLabels));
 writeFileSync(resolve(outDir, 'meta.json'), JSON.stringify(meta, null, 2));
+writeFileSync(resolve(outDir, 'timeseries.json'), JSON.stringify(timeseries));
 
 const nationalPop = Object.values(statePop).reduce((s, v) => s + v, 0);
 console.log('Wrote public/data:');
@@ -200,5 +273,9 @@ console.log(`  states.geojson   ${states.features.length} features`);
 console.log(`  kreise.geojson   ${kreise.features.length} features`);
 console.log(`  population join   ${matched}/${kreise.features.length} districts matched`);
 console.log(`  Germany total    ${nationalPop.toLocaleString('de-DE')} people`);
-console.log(`  colour domain    ${domainLow}%  ..  ${domainHigh}%`);
+console.log(`  colour domain    ${domainLow}%  ..  ${domainHigh}%  (pooled across ${years.length} years)`);
 console.log(`  district range   ${meta.districtMin}%  ..  ${meta.districtMax}%`);
+console.log(`  timeseries.json  ${years.length} years (${years[0]}-${years[years.length - 1]}), ` +
+  `${Object.keys(timeseries.states).length} states + ${Object.keys(timeseries.districts).length} districts`);
+console.log(`    pre-merge gaps   Göttingen (03159): ${preMergeNulls('03159')} yrs, ` +
+  `Wartburgkreis (16063): ${preMergeNulls('16063')} yrs`);

@@ -141,6 +141,9 @@ body {
   font-size: 13px;
 }
 .crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   border: 0;
   background: transparent;
   color: var(--accent);
@@ -150,6 +153,11 @@ body {
   font: inherit;
 }
 .crumb:hover { background: rgba(255, 255, 255, 0.07); }
+.crumb__back {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
 .crumb--current {
   color: var(--text);
   cursor: default;
@@ -265,11 +273,124 @@ body {
   color: var(--accent);
 }
 
+/* ---- Time slider ------------------------------------------------------------ */
+.timeline {
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.timeline__play,
+.timeline__step {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.timeline__play svg,
+.timeline__step svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+.timeline__play:hover,
+.timeline__step:hover {
+  background: rgba(255, 180, 84, 0.16);
+}
+.timeline__play:active,
+.timeline__step:active {
+  transform: scale(0.94);
+}
+.timeline__step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.timeline__step:disabled:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.timeline__year {
+  flex: none;
+  width: 44px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  transition: opacity 0.15s ease;
+}
+
+.timeline__slider {
+  flex: 1;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  /* Faint ticks at each of the 14 year-steps (2011-2024), layered under the
+     solid track colour, so the control visibly reads as discrete years
+     rather than a smooth continuous drag. */
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.4) 0,
+    rgba(255, 255, 255, 0.4) 1px,
+    transparent 1px,
+    transparent calc((100% - 1px) / 13)
+  );
+  background-color: rgba(255, 255, 255, 0.14);
+}
+.timeline__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel-solid);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.timeline__slider:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+.timeline__slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel-solid);
+  cursor: pointer;
+}
+.timeline__slider::-moz-range-track {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.4) 0,
+    rgba(255, 255, 255, 0.4) 1px,
+    transparent 1px,
+    transparent calc((100% - 1px) / 13)
+  );
+  background-color: rgba(255, 255, 255, 0.14);
+  height: 4px;
+  border-radius: 2px;
+}
+
 /* ---- Attribution ----------------------------------------------------------- */
 .attribution {
   position: absolute;
   right: 10px;
-  bottom: 8px;
+  bottom: 74px; /* clear the timeline card's row (~50px tall + 16px margin) at any viewport width */
   z-index: 5;
   font-size: 10.5px;
   color: rgba(255, 255, 255, 0.5);
@@ -344,10 +465,11 @@ body {
   #control { width: calc(100vw - 32px); }
   .detail {
     top: auto;
-    bottom: 16px;
+    bottom: 72px; /* leave room for the always-visible timeline below */
     right: 16px;
     left: 16px;
     width: auto;
   }
   .legend { display: none; }
+  .timeline { width: calc(100vw - 32px); }
 }
