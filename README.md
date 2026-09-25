@@ -1,71 +1,75 @@
-# Ausländerkarte — foreign-national share across Germany
+# Ausländerkarte — Germany's foreign-national population, mapped
 
-A full-screen, drill-down choropleth web map (à la *thetruesize.com*, but data-driven and
-scoped to Germany). Start on the 16 federal states, click one to zoom in and reveal its
-districts (*Kreise und kreisfreie Städte*), each coloured by the **share of foreign
-nationals** (*Ausländeranteil*). Search any state or district, hover for a tooltip, click a
-district for a detail panel, and drag the year slider (2011-2024) to see how the share
-changed over time. Press Esc to back out of a detail panel or drill level.
+**🔴 Live demo → https://JohnsonManuel.github.io/auslaenderkarte/**
 
-## Stack
-- **MapLibre GL JS** — WebGL vector map engine (open-source, no API key, no billing).
-- **d3-scale / d3-scale-chromatic** — sequential choropleth colour ramp.
-- **Fuse.js** — client-side fuzzy search over region names.
-- **Vite** — dev server + build. No backend: the data is static files on a CDN-friendly site.
+An interactive map that shows what share of each part of Germany is made up of
+foreign nationals (*Ausländer*), and how that has changed over the years. Think of it
+like *thetruesize.com* — one big full-screen map you explore — but built around real
+population data instead of country outlines.
 
-## Data
-- **Metric:** `AI0208` — *Anteil der ausländischen Bevölkerung an der Gesamtbevölkerung*
-  (share of foreign nationals, %), reference year **2024**.
-- **Source:** Statistische Ämter des Bundes und der Länder — **Regionalatlas Deutschland**,
-  a public, no-key ArcGIS service. Geometry + indicator are fetched together, already
-  reprojected to WGS84 and generalised for the web.
-- Boundaries and data join on the official **AGS** key (2 digits = state, 5 digits =
-  district), so drill-down is a prefix match — no fragile name matching.
+## What you can do
 
-- **History:** the same indicator back to **2011** (attribute-only, no geometry re-pull -
-  the shape doesn't change, just the value), for the year slider. 2011 is the earliest
-  year district AGS codes line up with today's 400 districts; two Kreisgebietsreform
-  mergers (Göttingen 2016, Wartburgkreis/Eisenach 2021) render as no-data before their
-  merger year rather than a guessed pre-merger value.
+- **Start with all 16 federal states**, each shaded by its share of foreign nationals —
+  darker means a higher share.
+- **Click a state to zoom in** and see the same picture broken down into its ~400
+  districts (*Kreise*). Click empty space to zoom back out.
+- **Hover anywhere** for a quick readout: how many Germans vs. non-Germans live there,
+  and the percentages.
+- **Search** for any state or district by name to jump straight to it.
+- **Drag the year slider (2011–2024)** to watch how the share shifts over time, or hit
+  play to animate it.
 
-Data only changes **once a year**, so there is no live backend to maintain. Refresh with:
+## What it's showing
 
-```bash
-npm run fetch-data   # re-pull raw GeoJSON + history from the Regionalatlas (needs bash + curl)
-npm run build-data   # clean + join + write public/data/* (incl. timeseries.json)
-```
+The core number is the **share of foreign nationals** — people living in an area who
+don't hold German citizenship, as a percentage of everyone living there. The absolute
+"Germans vs. non-Germans" head-counts you see on hover are worked out from that share
+combined with official population figures, so treat them as close estimates rather than
+exact registry counts.
 
-## Run
+The data comes straight from Germany's official statistics offices (the
+**Regionalatlas Deutschland** service run by the *Statistische Ämter des Bundes und der
+Länder*), plus population totals from the *Statistisches Bundesamt* census. It's public,
+free, and updated once a year — no login or paid API involved.
+
+## How it's built
+
+It's a small, self-contained web app with **no backend** — just static files served from
+a CDN, which is why it runs happily on GitHub Pages for free.
+
+- **[MapLibre GL JS](https://maplibre.org/)** — the map rendering engine (WebGL, open-source).
+- **d3-scale** for the colour ramp, **Fuse.js** for the name search.
+- **Vite** for the dev server and production build.
+- A couple of small scripts (`scripts/`) fetch the yearly data and bake it into the
+  ready-to-serve files in `public/data/`. Since the numbers only change once a year,
+  there's nothing to keep running.
+
+## Run it yourself
 
 ```bash
 npm install
-npm run dev          # open the printed http://localhost URL
+npm run dev      # opens a local dev server
+npm run build    # produces the static site in dist/
 ```
 
-Build a static bundle for hosting (Cloudflare Pages / Netlify / Vercel):
+To refresh the data for a new year:
 
 ```bash
-npm run build        # outputs dist/
-npm run preview      # preview the production build locally
+npm run fetch-data   # pull the latest figures from the Regionalatlas
+npm run build-data   # rebuild the app-ready data files
 ```
 
-## Layout
-```
-data/raw/            raw GeoJSON pulled from the Regionalatlas (current year)
-data/raw/by-year/    attribute-only history (2011-current year - 1), for the time slider
-public/data/         app-ready states.geojson, kreise.geojson, meta.json, timeseries.json
-scripts/             fetch-data.sh (download) + build-data.mjs (clean/join/time series)
-src/                 main.js (map + interactions), style.css
-```
+## Good to know
 
-## Notes / next steps
-- The federal dataset stops at district level. **Within-city neighbourhood** breakdowns
-  exist only on individual city open-data portals (Berlin, Munich, Hamburg, …) and would be
-  added city-by-city as a third drill level.
-- Absolute foreigner **counts** are derived (population × share, from the Destatis
-  Gemeindeverzeichnis), not read directly from a Regionalatlas count table - see
-  `counts()` in `build-data.mjs`. They're therefore approximate, and only available for
-  the current reference year (no historical per-district population series).
-- A legal-pathway breakdown (EU/free-movement vs. third-country, work/family/asylum) was
-  investigated but deferred: that data lives in GENESIS-Online / regionalstatistik.de,
-  which needs a registered account rather than the no-key Regionalatlas endpoint used here.
+- The official data only goes down to **district level** — there's no nationwide
+  neighbourhood-by-neighbourhood breakdown. Going deeper (e.g. Berlin or Munich
+  neighbourhoods) would mean pulling each city's own data separately.
+- History goes back to **2011** — the earliest year today's district boundaries line up
+  cleanly. A handful of districts that merged after that (e.g. Göttingen in 2016) show as
+  "no data" for the years before their merger rather than a guessed value.
+
+## Data credits
+
+Statistische Ämter des Bundes und der Länder — *Regionalatlas Deutschland* (indicator
+AI0208, foreign-national share) · Statistisches Bundesamt — *Gemeindeverzeichnis*
+(population). Administrative boundaries generalised for web display.
